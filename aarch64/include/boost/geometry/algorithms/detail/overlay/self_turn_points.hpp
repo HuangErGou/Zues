@@ -77,7 +77,7 @@ struct self_section_visitor
     RobustPolicy const& m_rescale_policy;
     Turns& m_turns;
     InterruptPolicy& m_interrupt_policy;
-    int m_source_index;
+    std::size_t m_source_index;
     bool m_skip_adjacent;
 
     inline self_section_visitor(Geometry const& g,
@@ -85,7 +85,7 @@ struct self_section_visitor
                                 RobustPolicy const& rp,
                                 Turns& turns,
                                 InterruptPolicy& ip,
-                                int source_index,
+                                std::size_t source_index,
                                 bool skip_adjacent)
         : m_geometry(g)
         , m_intersection_strategy(is)
@@ -135,7 +135,7 @@ struct get_turns
             RobustPolicy const& robust_policy,
             Turns& turns,
             InterruptPolicy& interrupt_policy,
-            int source_index, bool skip_adjacent)
+            std::size_t source_index, bool skip_adjacent)
     {
         typedef model::box
             <
@@ -229,7 +229,7 @@ struct self_get_turn_points
             RobustPolicy const& ,
             Turns& ,
             InterruptPolicy& ,
-            int /*source_index*/,
+            std::size_t /*source_index*/,
             bool /*skip_adjacent*/)
     {
         return true;
@@ -292,7 +292,7 @@ inline void self_turns(Geometry const& geometry,
                        RobustPolicy const& robust_policy,
                        Turns& turns,
                        InterruptPolicy& interrupt_policy,
-                       int source_index = 0,
+                       std::size_t source_index = 0,
                        bool skip_adjacent = false)
 {
     concepts::check<Geometry const>();
@@ -339,7 +339,7 @@ inline void self_turns(Geometry const& geometry,
                        RobustPolicy const& robust_policy,
                        Turns& turns,
                        InterruptPolicy& interrupt_policy,
-                       int source_index = 0,
+                       std::size_t source_index = 0,
                        bool skip_adjacent = false)
 {
     concepts::check<Geometry const>();

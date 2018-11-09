@@ -61,7 +61,7 @@ struct async_out_buffer : ::boost::process::detail::posix::handler_base_ext,
     {
         auto  pipe              = this->pipe;
         boost::asio::async_read(*pipe, buf,
-                [pipe](const boost::system::error_code&, std::size_t){});
+                [pipe](const boost::system::error_code&, std::size_t size){});
 
         this->pipe = nullptr;
         std::move(*pipe).sink().close();
@@ -89,8 +89,6 @@ struct async_out_buffer : ::boost::process::detail::posix::handler_base_ext,
             exec.set_error(::boost::process::detail::get_last_error(), "dup2() failed");
 
         ::close(pipe->native_sink());
-        ::close(pipe->native_source());
-
     }
 };
 
@@ -112,7 +110,7 @@ struct async_out_future : ::boost::process::detail::posix::handler_base_ext,
         fut = promise->get_future();
     }
     template <typename Executor>
-    inline void on_success(Executor &)
+    inline void on_success(Executor &exec)
     {
         auto pipe = this->pipe;
 
@@ -120,7 +118,7 @@ struct async_out_future : ::boost::process::detail::posix::handler_base_ext,
         auto promise = this->promise;
 
         boost::asio::async_read(*pipe, *buffer,
-                [pipe, buffer, promise](const boost::system::error_code& ec, std::size_t)
+                [pipe, buffer, promise](const boost::system::error_code& ec, std::size_t size)
                 {
                     if (ec && (ec.value() != ENOENT))
                     {
@@ -163,7 +161,6 @@ struct async_out_future : ::boost::process::detail::posix::handler_base_ext,
             exec.set_error(::boost::process::detail::get_last_error(), "dup2() failed");
 
         ::close(pipe->native_sink());
-        ::close(pipe->native_source());
     }
 
 };

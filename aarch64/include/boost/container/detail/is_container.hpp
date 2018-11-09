@@ -36,7 +36,7 @@
 
 namespace boost {
 namespace container {
-namespace dtl {
+namespace container_detail {
 
 template <class Container>
 struct is_container
@@ -48,7 +48,7 @@ struct is_container
          has_member_function_callable_with_empty<const Container>::value;
 };
 
-}  //namespace dtl {
+}  //namespace container_detail {
 }  //namespace container {
 }  //namespace boost {
 

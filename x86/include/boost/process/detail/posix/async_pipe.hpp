@@ -125,18 +125,6 @@ public:
         return _sink.write_some(buffers);
     }
 
-    template<typename MutableBufferSequence>
-    std::size_t read_some(const MutableBufferSequence & buffers, boost::system::error_code & ec) noexcept
-    {
-        return _source.read_some(buffers, ec);
-    }
-    template<typename MutableBufferSequence>
-    std::size_t write_some(const MutableBufferSequence & buffers, boost::system::error_code & ec) noexcept
-    {
-        return _sink.write_some(buffers, ec);
-    }
-
-
     native_handle_type native_source() const {return const_cast<boost::asio::posix::stream_descriptor&>(_source).native_handle();}
     native_handle_type native_sink  () const {return const_cast<boost::asio::posix::stream_descriptor&>(_sink  ).native_handle();}
 
@@ -148,7 +136,7 @@ public:
         const MutableBufferSequence & buffers,
               ReadHandler &&handler)
     {
-        return _source.async_read_some(buffers, std::forward<ReadHandler>(handler));
+        _source.async_read_some(buffers, std::forward<ReadHandler>(handler));
     }
 
     template<typename ConstBufferSequence,
@@ -159,7 +147,7 @@ public:
         const ConstBufferSequence & buffers,
         WriteHandler&& handler)
     {
-        return _sink.async_write_some(buffers, std::forward<WriteHandler>(handler));
+        _sink.async_write_some(buffers, std::forward<WriteHandler>(handler));
     }
 
 
@@ -250,8 +238,8 @@ async_pipe& async_pipe::operator=(const async_pipe & p)
     int sink;
 
     //cannot get the handle from a const object.
-    auto source_in = const_cast<::boost::asio::posix::stream_descriptor &>(p._source).native_handle();
-    auto sink_in   = const_cast<::boost::asio::posix::stream_descriptor &>(p._sink).native_handle();
+    auto source_in = const_cast<::boost::asio::posix::stream_descriptor &>(_source).native_handle();
+    auto sink_in   = const_cast<::boost::asio::posix::stream_descriptor &>(_sink).native_handle();
     if (source_in == -1)
         source = -1;
     else

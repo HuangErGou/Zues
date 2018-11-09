@@ -14,7 +14,6 @@
 #include <boost/beast/core/string_param.hpp>
 #include <boost/beast/core/string.hpp>
 #include <boost/beast/core/detail/allocator.hpp>
-#include <boost/beast/core/detail/empty_base_optimization.hpp>
 #include <boost/beast/http/field.hpp>
 #include <boost/asio/buffer.hpp>
 #include <boost/intrusive/list.hpp>
@@ -52,15 +51,7 @@ namespace http {
 */
 template<class Allocator>
 class basic_fields
-#if ! BOOST_BEAST_DOXYGEN
-    : private beast::detail::empty_base_optimization<Allocator>
-#endif
 {
-    // Fancy pointers are not supported
-    static_assert(std::is_pointer<typename
-        std::allocator_traits<Allocator>::pointer>::value,
-        "Allocator must use regular pointers");
-
     friend class fields_test; // for `header`
 
     static std::size_t constexpr max_static_buffer = 4096;
@@ -102,7 +93,7 @@ public:
         value_type& operator=(value_type const&) = delete;
 
         /// Returns the field enum, which can be @ref field::unknown
-        field
+        field const
         name() const;
 
         /// Returns the field name as a string
@@ -188,19 +179,6 @@ private:
                             boost::intrusive::constant_time_size<true>,
                                 boost::intrusive::compare<key_compare>>::type;
 
-    using align_type = typename
-        boost::type_with_alignment<alignof(value_type)>::type;
-
-    using rebind_type = typename
-        beast::detail::allocator_traits<Allocator>::
-            template rebind_alloc<align_type>;
-
-    using alloc_traits =
-        beast::detail::allocator_traits<rebind_type>;
-
-    using size_type = typename
-        beast::detail::allocator_traits<Allocator>::size_type;
-
 
 public:
     /// Destructor
@@ -214,14 +192,14 @@ public:
         @param alloc The allocator to use.
     */
     explicit
-    basic_fields(Allocator const& alloc) noexcept;
+    basic_fields(Allocator const& alloc);
 
     /** Move constructor.
 
         The state of the moved-from object is
         as if constructed using the same allocator.
     */
-    basic_fields(basic_fields&&) noexcept;
+    basic_fields(basic_fields&&);
 
     /** Move constructor.
 
@@ -258,8 +236,7 @@ public:
         The state of the moved-from object is
         as if constructed using the same allocator.
     */
-    basic_fields& operator=(basic_fields&&) noexcept(
-        alloc_traits::propagate_on_container_move_assignment::value);
+    basic_fields& operator=(basic_fields&&);
 
     /// Copy assignment.
     basic_fields& operator=(basic_fields const&);
@@ -283,7 +260,7 @@ public:
     allocator_type
     get_allocator() const
     {
-        return this->member();
+        return alloc_;
     }
 
     //--------------------------------------------------------------------------
@@ -704,6 +681,16 @@ private:
     template<class OtherAlloc>
     friend class basic_fields;
 
+    using base_alloc_type = typename
+        beast::detail::allocator_traits<Allocator>::
+            template rebind_alloc<value_type>;
+
+    using alloc_traits =
+        beast::detail::allocator_traits<base_alloc_type>;
+
+    using size_type = typename
+        beast::detail::allocator_traits<Allocator>::size_type;
+
     value_type&
     new_element(field name,
         string_view sname, string_view value);
@@ -749,6 +736,7 @@ private:
     void
     swap(basic_fields& other, std::false_type);
 
+    base_alloc_type alloc_;
     set_t set_;
     list_t list_;
     string_view method_;

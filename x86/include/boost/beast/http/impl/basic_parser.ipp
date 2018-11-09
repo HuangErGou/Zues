@@ -132,7 +132,8 @@ put(boost::asio::const_buffer const& buffer,
 {
     BOOST_ASSERT(state_ != state::complete);
     using boost::asio::buffer_size;
-    auto p = static_cast<char const*>(buffer.data());
+    auto p = reinterpret_cast<
+        char const*>(buffer.data());
     auto n = buffer.size();
     auto const p0 = p;
     auto const p1 = p0 + n;
@@ -147,7 +148,7 @@ loop:
             return 0;
         }
         state_ = state::start_line;
-        BOOST_FALLTHROUGH;
+        BOOST_BEAST_FALLTHROUGH;
 
     case state::start_line:
     {
@@ -178,7 +179,7 @@ loop:
             ec = error::need_more;
             goto done;
         }
-        BOOST_FALLTHROUGH;
+        BOOST_BEAST_FALLTHROUGH;
     }
 
     case state::fields:
@@ -211,7 +212,7 @@ loop:
         if(ec)
             goto done;
         state_ = state::body;
-        BOOST_FALLTHROUGH;
+        BOOST_BEAST_FALLTHROUGH;
 
     case state::body:
         BOOST_ASSERT(! skip_);
@@ -226,7 +227,7 @@ loop:
         if(ec)
             goto done;
         state_ = state::body_to_eof;
-        BOOST_FALLTHROUGH;
+        BOOST_BEAST_FALLTHROUGH;
 
     case state::body_to_eof:
         BOOST_ASSERT(! skip_);
@@ -240,7 +241,7 @@ loop:
         if(ec)
             goto done;
         state_ = state::chunk_header;
-        BOOST_FALLTHROUGH;
+        BOOST_BEAST_FALLTHROUGH;
 
     case state::chunk_header:
         parse_chunk_header(p, n, ec);

@@ -1,7 +1,6 @@
 // Boost.Geometry (aka GGL, Generic Geometry Library)
 
 // Copyright (c) 2012-2014 Barend Gehrels, Amsterdam, the Netherlands.
-// Copyright (c) 2017 Adam Wulkiewicz, Lodz, Poland.
 
 // This file was modified by Oracle on 2016-2017.
 // Modifications copyright (c) 2016-2017 Oracle and/or its affiliates.
@@ -156,14 +155,8 @@ struct buffered_piece_collection
             robust_point_type
         >::type robust_area_strategy_type;
 
-    typedef typename area_strategy_type::template result_type
-        <
-            point_type
-        >::type area_result_type;
-    typedef typename robust_area_strategy_type::template result_type
-        <
-            robust_point_type
-        >::type robust_area_result_type;
+    typedef typename area_strategy_type::return_type area_result_type;
+    typedef typename robust_area_strategy_type::return_type robust_area_result_type;
 
     typedef typename geometry::rescale_policy_type
         <
@@ -610,11 +603,7 @@ struct buffered_piece_collection
                 if (multi0 == multi1)
                 {
                     const deflate_properties& prop =  properties[multi0];
-
-                    // NOTE: Keep brackets around prop.count
-                    // avoid gcc-bug "parse error in template argument list"
-                    // GCC versions 5.4 and 5.5 (and probably more)
-                    if (! prop.has_inflated && (prop.count) < 3)
+                    if (! prop.has_inflated && prop.count < 3)
                     {
                         // Property is not inflated
                         // Not enough points, this might be caused by <float> where
@@ -1581,8 +1570,10 @@ struct buffered_piece_collection
             }
         }
 
-        detail::overlay::assign_parents<overlay_buffer>(offsetted_rings, traversed_rings,
-                selected, m_intersection_strategy);
+        // Assign parents, checking orientation but NOT discarding double
+        // negative rings (negative child with negative parent)
+        detail::overlay::assign_parents(offsetted_rings, traversed_rings,
+                selected, m_intersection_strategy, true, false);
         return detail::overlay::add_rings<GeometryOutput>(selected, offsetted_rings, traversed_rings, out,
                                                           m_area_strategy);
     }

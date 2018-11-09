@@ -23,7 +23,7 @@
 
 namespace boost {
 namespace container {
-namespace dtl {
+namespace container_detail {
 
    template <class Cont, class U>
    struct container_rebind;
@@ -251,7 +251,7 @@ namespace dtl {
 
 #endif   //!defined(BOOST_NO_CXX11_VARIADIC_TEMPLATES)
 
-}  //namespace dtl {
+}  //namespace container_detail {
 }  //namespace container {
 }  //namespace boost {
 

@@ -70,8 +70,9 @@ struct basic_dynamic_body
     public:
         template<bool isRequest, class Fields>
         explicit
-        reader(header<isRequest, Fields>&, value_type& b)
-            : body_(b)
+        reader(message<isRequest,
+                basic_dynamic_body, Fields>& msg)
+            : body_(msg.body())
         {
         }
 
@@ -139,8 +140,9 @@ struct basic_dynamic_body
 
         template<bool isRequest, class Fields>
         explicit
-        writer(header<isRequest, Fields> const&, value_type const& b)
-            : body_(b)
+        writer(message<isRequest,
+                basic_dynamic_body, Fields> const& m)
+            : body_(m.body())
         {
         }
 

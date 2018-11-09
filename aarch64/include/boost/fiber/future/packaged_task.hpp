@@ -71,7 +71,7 @@ public:
     }
 
     ~packaged_task() {
-        if ( task_ && obtained_) {
+        if ( task_) {
             task_->owner_destroyed();
         }
     }

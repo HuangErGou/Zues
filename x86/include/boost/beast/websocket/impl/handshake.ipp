@@ -20,9 +20,7 @@
 #include <boost/asio/associated_allocator.hpp>
 #include <boost/asio/associated_executor.hpp>
 #include <boost/asio/coroutine.hpp>
-#include <boost/asio/executor_work_guard.hpp>
 #include <boost/asio/handler_continuation_hook.hpp>
-#include <boost/asio/handler_invoke_hook.hpp>
 #include <boost/assert.hpp>
 #include <boost/throw_exception.hpp>
 #include <memory>
@@ -35,31 +33,26 @@ namespace websocket {
 
 // send the upgrade request and process the response
 //
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 template<class Handler>
-class stream<NextLayer, deflateSupported>::handshake_op
+class stream<NextLayer>::handshake_op
     : public boost::asio::coroutine
 {
     struct data
     {
-        stream<NextLayer, deflateSupported>& ws;
-        boost::asio::executor_work_guard<decltype(std::declval<
-            stream<NextLayer, deflateSupported>&>().get_executor())> wg;
+        stream<NextLayer>& ws;
         response_type* res_p;
         detail::sec_ws_key_type key;
         http::request<http::empty_body> req;
         response_type res;
 
         template<class Decorator>
-        data(
-            Handler const&,
-            stream<NextLayer, deflateSupported>& ws_,
+        data(Handler&, stream<NextLayer>& ws_,
             response_type* res_p_,
-            string_view host,
-            string_view target,
-            Decorator const& decorator)
+                string_view host,
+                    string_view target,
+                        Decorator const& decorator)
             : ws(ws_)
-            , wg(ws.get_executor())
             , res_p(res_p_)
             , req(ws.build_request(key,
                 host, target, decorator))
@@ -72,11 +65,11 @@ class stream<NextLayer, deflateSupported>::handshake_op
 
 public:
     handshake_op(handshake_op&&) = default;
-    handshake_op(handshake_op const&) = delete;
+    handshake_op(handshake_op const&) = default;
 
     template<class DeducedHandler, class... Args>
     handshake_op(DeducedHandler&& h,
-            stream<NextLayer, deflateSupported>& ws, Args&&... args)
+            stream<NextLayer>& ws, Args&&... args)
         : d_(std::forward<DeducedHandler>(h),
             ws, std::forward<Args>(args)...)
     {
@@ -88,16 +81,16 @@ public:
     allocator_type
     get_allocator() const noexcept
     {
-        return (boost::asio::get_associated_allocator)(d_.handler());
+        return boost::asio::get_associated_allocator(d_.handler());
     }
 
     using executor_type = boost::asio::associated_executor_t<
-        Handler, decltype(std::declval<stream<NextLayer, deflateSupported>&>().get_executor())>;
+        Handler, decltype(std::declval<stream<NextLayer>&>().get_executor())>;
 
     executor_type
     get_executor() const noexcept
     {
-        return (boost::asio::get_associated_executor)(
+        return boost::asio::get_associated_executor(
             d_.handler(), d_->ws.get_executor());
     }
 
@@ -113,29 +106,19 @@ public:
         return asio_handler_is_continuation(
             std::addressof(op->d_.handler()));
     }
-
-    template<class Function>
-    friend
-    void asio_handler_invoke(Function&& f, handshake_op* op)
-    {
-        using boost::asio::asio_handler_invoke;
-        asio_handler_invoke(f,
-            std::addressof(op->d_.handler()));
-    }
 };
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 template<class Handler>
 void
-stream<NextLayer, deflateSupported>::
-handshake_op<Handler>::
+stream<NextLayer>::handshake_op<Handler>::
 operator()(error_code ec, std::size_t)
 {
     auto& d = *d_;
     BOOST_ASIO_CORO_REENTER(*this)
     {
         // Send HTTP Upgrade
-        d.ws.do_pmd_config(d.req, is_deflate_supported{});
+        pmd_read(d.ws.pmd_config_, d.req);
         BOOST_ASIO_CORO_YIELD
         http::async_write(d.ws.stream_,
             d.req, std::move(*this));
@@ -159,38 +142,35 @@ operator()(error_code ec, std::size_t)
         if(d.res_p)
             swap(d.res, *d.res_p);
     upcall:
-        {
-            auto wg = std::move(d.wg);
-            d_.invoke(ec);
-        }
+        d_.invoke(ec);
     }
 }
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 template<class HandshakeHandler>
 BOOST_ASIO_INITFN_RESULT_TYPE(
     HandshakeHandler, void(error_code))
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 async_handshake(string_view host,
     string_view target,
         HandshakeHandler&& handler)
 {
     static_assert(is_async_stream<next_layer_type>::value,
         "AsyncStream requirements not met");
-    BOOST_BEAST_HANDLER_INIT(
-        HandshakeHandler, void(error_code));
+    boost::asio::async_completion<HandshakeHandler,
+        void(error_code)> init{handler};
     handshake_op<BOOST_ASIO_HANDLER_TYPE(
         HandshakeHandler, void(error_code))>{
-            std::move(init.completion_handler), *this, nullptr, host,
+            init.completion_handler, *this, nullptr, host,
                 target, &default_decorate_req}();
     return init.result.get();
 }
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 template<class HandshakeHandler>
 BOOST_ASIO_INITFN_RESULT_TYPE(
     HandshakeHandler, void(error_code))
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 async_handshake(response_type& res,
     string_view host,
         string_view target,
@@ -198,20 +178,20 @@ async_handshake(response_type& res,
 {
     static_assert(is_async_stream<next_layer_type>::value,
         "AsyncStream requirements not met");
-    BOOST_BEAST_HANDLER_INIT(
-        HandshakeHandler, void(error_code));
+    boost::asio::async_completion<HandshakeHandler,
+        void(error_code)> init{handler};
     handshake_op<BOOST_ASIO_HANDLER_TYPE(
         HandshakeHandler, void(error_code))>{
-            std::move(init.completion_handler), *this, &res, host,
+            init.completion_handler, *this, &res, host,
                 target, &default_decorate_req}();
     return init.result.get();
 }
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 template<class RequestDecorator, class HandshakeHandler>
 BOOST_ASIO_INITFN_RESULT_TYPE(
     HandshakeHandler, void(error_code))
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 async_handshake_ex(string_view host,
     string_view target,
         RequestDecorator const& decorator,
@@ -219,23 +199,23 @@ async_handshake_ex(string_view host,
 {
     static_assert(is_async_stream<next_layer_type>::value,
         "AsyncStream requirements not met");
-    static_assert(detail::is_request_decorator<
+    static_assert(detail::is_RequestDecorator<
             RequestDecorator>::value,
         "RequestDecorator requirements not met");
-    BOOST_BEAST_HANDLER_INIT(
-        HandshakeHandler, void(error_code));
+    boost::asio::async_completion<HandshakeHandler,
+        void(error_code)> init{handler};
     handshake_op<BOOST_ASIO_HANDLER_TYPE(
         HandshakeHandler, void(error_code))>{
-            std::move(init.completion_handler), *this, nullptr, host,
+            init.completion_handler, *this, nullptr, host,
                 target, decorator}();
     return init.result.get();
 }
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 template<class RequestDecorator, class HandshakeHandler>
 BOOST_ASIO_INITFN_RESULT_TYPE(
     HandshakeHandler, void(error_code))
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 async_handshake_ex(response_type& res,
     string_view host,
         string_view target,
@@ -244,21 +224,21 @@ async_handshake_ex(response_type& res,
 {
     static_assert(is_async_stream<next_layer_type>::value,
         "AsyncStream requirements not met");
-    static_assert(detail::is_request_decorator<
+    static_assert(detail::is_RequestDecorator<
             RequestDecorator>::value,
         "RequestDecorator requirements not met");
-    BOOST_BEAST_HANDLER_INIT(
-        HandshakeHandler, void(error_code));
+    boost::asio::async_completion<HandshakeHandler,
+        void(error_code)> init{handler};
     handshake_op<BOOST_ASIO_HANDLER_TYPE(
         HandshakeHandler, void(error_code))>{
-            std::move(init.completion_handler), *this, &res, host,
+            init.completion_handler, *this, &res, host,
                 target, decorator}();
     return init.result.get();
 }
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 void
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 handshake(string_view host,
     string_view target)
 {
@@ -271,9 +251,9 @@ handshake(string_view host,
         BOOST_THROW_EXCEPTION(system_error{ec});
 }
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 void
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 handshake(response_type& res,
     string_view host,
         string_view target)
@@ -286,17 +266,17 @@ handshake(response_type& res,
         BOOST_THROW_EXCEPTION(system_error{ec});
 }
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 template<class RequestDecorator>
 void
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 handshake_ex(string_view host,
     string_view target,
         RequestDecorator const& decorator)
 {
     static_assert(is_sync_stream<next_layer_type>::value,
         "SyncStream requirements not met");
-    static_assert(detail::is_request_decorator<
+    static_assert(detail::is_RequestDecorator<
             RequestDecorator>::value,
         "RequestDecorator requirements not met");
     error_code ec;
@@ -305,10 +285,10 @@ handshake_ex(string_view host,
         BOOST_THROW_EXCEPTION(system_error{ec});
 }
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 template<class RequestDecorator>
 void
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 handshake_ex(response_type& res,
     string_view host,
         string_view target,
@@ -316,7 +296,7 @@ handshake_ex(response_type& res,
 {
     static_assert(is_sync_stream<next_layer_type>::value,
         "SyncStream requirements not met");
-    static_assert(detail::is_request_decorator<
+    static_assert(detail::is_RequestDecorator<
             RequestDecorator>::value,
         "RequestDecorator requirements not met");
     error_code ec;
@@ -325,9 +305,9 @@ handshake_ex(response_type& res,
         BOOST_THROW_EXCEPTION(system_error{ec});
 }
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 void
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 handshake(string_view host,
     string_view target, error_code& ec)
 {
@@ -337,9 +317,9 @@ handshake(string_view host,
         host, target, &default_decorate_req, ec);
 }
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 void
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 handshake(response_type& res,
     string_view host,
         string_view target,
@@ -351,10 +331,10 @@ handshake(response_type& res,
         host, target, &default_decorate_req, ec);
 }
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 template<class RequestDecorator>
 void
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 handshake_ex(string_view host,
     string_view target,
         RequestDecorator const& decorator,
@@ -362,17 +342,17 @@ handshake_ex(string_view host,
 {
     static_assert(is_sync_stream<next_layer_type>::value,
         "SyncStream requirements not met");
-    static_assert(detail::is_request_decorator<
+    static_assert(detail::is_RequestDecorator<
             RequestDecorator>::value,
         "RequestDecorator requirements not met");
     do_handshake(nullptr,
         host, target, decorator, ec);
 }
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 template<class RequestDecorator>
 void
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 handshake_ex(response_type& res,
     string_view host,
         string_view target,
@@ -381,7 +361,7 @@ handshake_ex(response_type& res,
 {
     static_assert(is_sync_stream<next_layer_type>::value,
         "SyncStream requirements not met");
-    static_assert(detail::is_request_decorator<
+    static_assert(detail::is_RequestDecorator<
             RequestDecorator>::value,
         "RequestDecorator requirements not met");
     do_handshake(&res,
@@ -390,10 +370,10 @@ handshake_ex(response_type& res,
 
 //------------------------------------------------------------------------------
 
-template<class NextLayer, bool deflateSupported>
+template<class NextLayer>
 template<class RequestDecorator>
 void
-stream<NextLayer, deflateSupported>::
+stream<NextLayer>::
 do_handshake(
     response_type* res_p,
     string_view host,
@@ -407,7 +387,7 @@ do_handshake(
     {
         auto const req = build_request(
             key, host, target, decorator);
-        do_pmd_config(req, is_deflate_supported{});
+        pmd_read(pmd_config_, req);
         http::write(stream_, req, ec);
     }
     if(ec)

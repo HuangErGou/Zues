@@ -239,8 +239,8 @@ public:
 
     // Constructor.
     //
-    // `h` holds the headers of the message we are
-    // serializing, while `b` holds the body.
+    // `m` holds the message we are serializing, which will
+    // always have the `basic_file_body` as the body type.
     //
     // Note that the message is passed by non-const reference.
     // This is intentional, because reading from the file
@@ -262,7 +262,8 @@ public:
     // a time.
     //
     template<bool isRequest, class Fields>
-    writer(header<isRequest, Fields>& h, value_type& b);
+    writer(message<
+        isRequest, basic_file_body, Fields>& m);
 
     // Initializer
     //
@@ -295,11 +296,9 @@ template<class File>
 template<bool isRequest, class Fields>
 basic_file_body<File>::
 writer::
-writer(header<isRequest, Fields>& h, value_type& b)
-    : body_(b)
+writer(message<isRequest, basic_file_body, Fields>& m)
+    : body_(m.body())
 {
-    boost::ignore_unused(h);
-
     // The file must already be open
     BOOST_ASSERT(body_.file_.is_open());
 
@@ -399,12 +398,13 @@ public:
     //
     // This is called after the header is parsed and
     // indicates that a non-zero sized body may be present.
-    // `h` holds the received message headers.
-    // `b` is an instance of `basic_file_body`.
+    // `m` holds the message we are receiving, which will
+    // always have the `basic_file_body` as the body type.
     //
     template<bool isRequest, class Fields>
     explicit
-    reader(header<isRequest, Fields>&h, value_type& b);
+    reader(
+        message<isRequest, basic_file_body, Fields>& m);
 
     // Initializer
     //
@@ -447,10 +447,9 @@ template<class File>
 template<bool isRequest, class Fields>
 basic_file_body<File>::
 reader::
-reader(header<isRequest, Fields>& h, value_type& body)
-    : body_(body)
+reader(message<isRequest, basic_file_body, Fields>& m)
+    : body_(m.body())
 {
-    boost::ignore_unused(h);
 }
 
 template<class File>

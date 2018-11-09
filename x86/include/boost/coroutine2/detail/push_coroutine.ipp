@@ -56,8 +56,8 @@ push_coroutine< T >::~push_coroutine() {
 
 template< typename T >
 push_coroutine< T >::push_coroutine( push_coroutine && other) noexcept :
-    cb_{ nullptr } {
-    std::swap( cb_, other.cb_);
+    cb_{ other.cb_ } {
+    other.cb_ = nullptr;
 }
 
 template< typename T >
@@ -116,8 +116,8 @@ push_coroutine< T & >::~push_coroutine() {
 
 template< typename T >
 push_coroutine< T & >::push_coroutine( push_coroutine && other) noexcept :
-    cb_{ nullptr } {
-    std::swap( cb_, other.cb_);
+    cb_{ other.cb_ } {
+    other.cb_ = nullptr;
 }
 
 template< typename T >
@@ -167,8 +167,8 @@ push_coroutine< void >::~push_coroutine() {
 
 inline
 push_coroutine< void >::push_coroutine( push_coroutine && other) noexcept :
-    cb_{ nullptr } {
-    std::swap( cb_, other.cb_);
+    cb_{ other.cb_ } {
+    other.cb_ = nullptr;
 }
 
 inline

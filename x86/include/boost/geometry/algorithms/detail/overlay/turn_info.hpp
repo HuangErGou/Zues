@@ -94,6 +94,7 @@ struct turn_info
     bool discarded;
 
     bool has_colocated_both; // Colocated with a uu turn (for union) or ii (other)
+    bool switch_source; // For u/u turns which can either switch or not
 
     Container operations;
 
@@ -103,6 +104,7 @@ struct turn_info
         , cluster_id(-1)
         , discarded(false)
         , has_colocated_both(false)
+        , switch_source(false)
     {}
 
     inline bool both(operation_type type) const

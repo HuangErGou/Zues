@@ -78,11 +78,8 @@ void context_entry( transfer_t t) noexcept {
         t = jump_fcontext( t.fctx, nullptr);
         // start executing
         t.fctx = rec->run( t.fctx);
-    } catch ( forced_unwind const& ex) {
-        t = { ex.fctx, nullptr };
-#ifndef BOOST_ASSERT_IS_VOID
-        const_cast< forced_unwind & >( ex).caught = true;
-#endif
+    } catch ( forced_unwind const& e) {
+        t = { e.fctx, nullptr };
     }
     BOOST_ASSERT( nullptr != t.fctx);
     // destroy context-stack of `this`context on next context
@@ -141,7 +138,7 @@ public:
         Ctx c{ fctx };
         // invoke context-function
 #if defined(BOOST_NO_CXX17_STD_INVOKE)
-        c = boost::context::detail::invoke( fn_, std::move( c) );
+        c = invoke( fn_, std::move( c) );
 #else
         c = std::invoke( fn_, std::move( c) );
 #endif
@@ -241,7 +238,7 @@ public:
     }
 
     continuation( continuation && other) noexcept {
-        swap( other);
+        std::swap( fctx_, other.fctx_);
     }
 
     continuation & operator=( continuation && other) noexcept {
@@ -255,38 +252,29 @@ public:
     continuation( continuation const& other) noexcept = delete;
     continuation & operator=( continuation const& other) noexcept = delete;
 
-    continuation resume() & {
-        return std::move( * this).resume();
-    }
-
-    continuation resume() && {
+    continuation resume() {
         BOOST_ASSERT( nullptr != fctx_);
-        return { detail::jump_fcontext(
+        return detail::jump_fcontext(
 #if defined(BOOST_NO_CXX14_STD_EXCHANGE)
                     detail::exchange( fctx_, nullptr),
 #else
                     std::exchange( fctx_, nullptr),
 #endif
-                    nullptr).fctx };
+                    nullptr).fctx;
     }
 
     template< typename Fn >
-    continuation resume_with( Fn && fn) & {
-        return std::move( * this).resume_with( std::forward< Fn >( fn) );
-    }
-
-    template< typename Fn >
-    continuation resume_with( Fn && fn) && {
+    continuation resume_with( Fn && fn) {
         BOOST_ASSERT( nullptr != fctx_);
         auto p = std::make_tuple( std::forward< Fn >( fn) );
-        return { detail::ontop_fcontext(
+        return detail::ontop_fcontext(
 #if defined(BOOST_NO_CXX14_STD_EXCHANGE)
                     detail::exchange( fctx_, nullptr),
 #else
                     std::exchange( fctx_, nullptr),
 #endif
                     & p,
-                    detail::context_ontop< continuation, Fn >).fctx };
+                    detail::context_ontop< continuation, Fn >).fctx;
     }
 
     explicit operator bool() const noexcept {
@@ -297,8 +285,28 @@ public:
         return nullptr == fctx_;
     }
 
+    bool operator==( continuation const& other) const noexcept {
+        return fctx_ == other.fctx_;
+    }
+
+    bool operator!=( continuation const& other) const noexcept {
+        return fctx_ != other.fctx_;
+    }
+
     bool operator<( continuation const& other) const noexcept {
         return fctx_ < other.fctx_;
+    }
+
+    bool operator>( continuation const& other) const noexcept {
+        return other.fctx_ < fctx_;
+    }
+
+    bool operator<=( continuation const& other) const noexcept {
+        return ! ( * this > other);
+    }
+
+    bool operator>=( continuation const& other) const noexcept {
+        return ! ( * this < other);
     }
 
     template< typename charT, class traitsT >

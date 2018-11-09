@@ -18,7 +18,6 @@
 
 
 #include <boost/process/detail/posix/sigchld_service.hpp>
-#include <boost/process/detail/posix/is_running.hpp>
 
 #include <functional>
 #include <type_traits>
@@ -96,11 +95,11 @@ struct io_context_ref : handler_base_ext
         auto & es = exec.exit_status;
 
         auto wh = [funcs, es](int val, const std::error_code & ec)
-                {
-                    es->store(val);
+				{
+        			es->store(val);
                     for (auto & func : funcs)
-                        func(::boost::process::detail::posix::eval_exit_status(val), ec);
-                };
+                        func(WEXITSTATUS(val), ec);
+				};
 
         sigchld_service.async_wait(exec.pid, std::move(wh));
     }

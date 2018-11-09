@@ -13,11 +13,12 @@
 #endif
 
 #include <boost/assert.hpp>
-#include <boost/core/no_exceptions_support.hpp>
-#include <boost/core/pointer_traits.hpp>
+#include <boost/detail/no_exceptions_support.hpp>
 #include <boost/detail/select_type.hpp>
+#include <boost/iterator/iterator_categories.hpp>
 #include <boost/limits.hpp>
 #include <boost/move/move.hpp>
+#include <boost/predef.h>
 #include <boost/preprocessor/arithmetic/inc.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/repetition/enum.hpp>
@@ -32,13 +33,11 @@
 #include <boost/type_traits/add_lvalue_reference.hpp>
 #include <boost/type_traits/aligned_storage.hpp>
 #include <boost/type_traits/alignment_of.hpp>
-#include <boost/type_traits/integral_constant.hpp>
-#include <boost/type_traits/is_base_of.hpp>
 #include <boost/type_traits/is_class.hpp>
+#include <boost/type_traits/is_convertible.hpp>
 #include <boost/type_traits/is_empty.hpp>
 #include <boost/type_traits/is_nothrow_move_assignable.hpp>
 #include <boost/type_traits/is_nothrow_move_constructible.hpp>
-#include <boost/type_traits/is_nothrow_swappable.hpp>
 #include <boost/type_traits/is_same.hpp>
 #include <boost/type_traits/remove_const.hpp>
 #include <boost/unordered/detail/fwd.hpp>
@@ -196,18 +195,6 @@
 #endif
 #endif
 
-// BOOST_UNORDERED_TEMPLATE_DEDUCTION_GUIDES
-
-#if !defined(BOOST_UNORDERED_TEMPLATE_DEDUCTION_GUIDES)
-#if BOOST_COMP_CLANG && __cplusplus >= 201703
-#define BOOST_UNORDERED_TEMPLATE_DEDUCTION_GUIDES 1
-#endif
-#endif
-
-#if !defined(BOOST_UNORDERED_TEMPLATE_DEDUCTION_GUIDES)
-#define BOOST_UNORDERED_TEMPLATE_DEDUCTION_GUIDES 0
-#endif
-
 namespace boost {
   namespace unordered {
     namespace iterator_detail {
@@ -257,8 +244,9 @@ namespace boost {
       // iterator SFINAE
 
       template <typename I>
-      struct is_forward : boost::is_base_of<std::forward_iterator_tag,
-                            typename std::iterator_traits<I>::iterator_category>
+      struct is_forward
+        : boost::is_convertible<typename boost::iterator_traversal<I>::type,
+            boost::forward_traversal_tag>
       {
       };
 
@@ -553,6 +541,21 @@ namespace boost {
       {
         template <typename T> convert_from_anything(T const&);
       };
+
+      // Get a pointer from a smart pointer, a bit simpler than pointer_traits
+      // as we already know the pointer type that we want.
+      template <typename T> struct pointer
+      {
+        template <typename Ptr> static T* get(Ptr const& x)
+        {
+          return static_cast<T*>(x.operator->());
+        }
+
+        template <typename T2> static T* get(T2* x)
+        {
+          return static_cast<T*>(x);
+        }
+      };
     }
   }
 }
@@ -738,118 +741,6 @@ namespace boost {
 #if defined(BOOST_MSVC)
 #pragma warning(pop)
 #endif
-
-      //////////////////////////////////////////////////////////////////////////
-      // value_base
-      //
-      // Space used to store values.
-
-      template <typename ValueType> struct value_base
-      {
-        typedef ValueType value_type;
-
-        typename boost::aligned_storage<sizeof(value_type),
-          boost::alignment_of<value_type>::value>::type data_;
-
-        value_base() : data_() {}
-
-        void* address() { return this; }
-
-        value_type& value() { return *(ValueType*)this; }
-
-        value_type const& value() const { return *(ValueType const*)this; }
-
-        value_type* value_ptr() { return (ValueType*)this; }
-
-        value_type const* value_ptr() const { return (ValueType const*)this; }
-
-      private:
-        value_base& operator=(value_base const&);
-      };
-
-      //////////////////////////////////////////////////////////////////////////
-      // optional
-      // TODO: Use std::optional when available.
-
-      template <typename T> class optional
-      {
-        BOOST_MOVABLE_BUT_NOT_COPYABLE(optional)
-
-        boost::unordered::detail::value_base<T> value_;
-        bool has_value_;
-
-        void destroy()
-        {
-          if (has_value_) {
-            boost::unordered::detail::func::destroy(value_.value_ptr());
-            has_value_ = false;
-          }
-        }
-
-        void move(optional<T>& x)
-        {
-          BOOST_ASSERT(!has_value_ && x.has_value_);
-          new (value_.value_ptr()) T(boost::move(x.value_.value()));
-          boost::unordered::detail::func::destroy(x.value_.value_ptr());
-          has_value_ = true;
-          x.has_value_ = false;
-        }
-
-      public:
-        optional() BOOST_NOEXCEPT : has_value_(false) {}
-
-        optional(BOOST_RV_REF(optional<T>) x) : has_value_(false)
-        {
-          if (x.has_value_) {
-            move(x);
-          }
-        }
-
-        explicit optional(T const& x) : has_value_(true)
-        {
-          new (value_.value_ptr()) T(x);
-        }
-
-        optional& operator=(BOOST_RV_REF(optional<T>) x)
-        {
-          destroy();
-          if (x.has_value_) {
-            move(x);
-          }
-          return *this;
-        }
-
-        ~optional() { destroy(); }
-
-        bool has_value() const { return has_value_; }
-        T& operator*() { return value_.value(); }
-        T const& operator*() const { return value_.value(); }
-        T* operator->() { return value_.value_ptr(); }
-        T const* operator->() const { return value_.value_ptr(); }
-
-        bool operator==(optional<T> const& x)
-        {
-          return has_value_ ? x.has_value_ && value_.value() == x.value_.value()
-                            : !x.has_value_;
-        }
-
-        bool operator!=(optional<T> const& x) { return !((*this) == x); }
-
-        void swap(optional<T>& x)
-        {
-          if (has_value_ != x.has_value_) {
-            if (has_value_) {
-              x.move(*this);
-            } else {
-              move(x);
-            }
-          } else if (has_value_) {
-            boost::swap(value_.value(), x.value_.value());
-          }
-        }
-
-        friend void swap(optional<T>& x, optional<T>& y) { x.swap(y); }
-      };
     }
   }
 }
@@ -964,78 +855,6 @@ namespace boost {
 
 #endif
 
-////////////////////////////////////////////////////////////////////////////
-// TRAITS TYPE DETECTION MECHANISM
-//
-// Used to implement traits that use a type if present, or a
-// default otherwise.
-
-#if defined(BOOST_MSVC) && BOOST_MSVC <= 1400
-
-#define BOOST_UNORDERED_DEFAULT_TYPE_TMPLT(tname)                              \
-  template <typename Tp, typename Default> struct default_type_##tname         \
-  {                                                                            \
-                                                                               \
-    template <typename X>                                                      \
-    static choice1::type test(choice1, typename X::tname* = 0);                \
-                                                                               \
-    template <typename X> static choice2::type test(choice2, void* = 0);       \
-                                                                               \
-    struct DefaultWrap                                                         \
-    {                                                                          \
-      typedef Default tname;                                                   \
-    };                                                                         \
-                                                                               \
-    enum                                                                       \
-    {                                                                          \
-      value = (1 == sizeof(test<Tp>(choose())))                                \
-    };                                                                         \
-                                                                               \
-    typedef typename boost::detail::if_true<value>::BOOST_NESTED_TEMPLATE      \
-      then<Tp, DefaultWrap>::type::tname type;                                 \
-  }
-
-#else
-
-namespace boost {
-  namespace unordered {
-    namespace detail {
-      template <typename T, typename T2> struct sfinae : T2
-      {
-      };
-    }
-  }
-}
-
-#define BOOST_UNORDERED_DEFAULT_TYPE_TMPLT(tname)                              \
-  template <typename Tp, typename Default> struct default_type_##tname         \
-  {                                                                            \
-                                                                               \
-    template <typename X>                                                      \
-    static typename boost::unordered::detail::sfinae<typename X::tname,        \
-      choice1>::type test(choice1);                                            \
-                                                                               \
-    template <typename X> static choice2::type test(choice2);                  \
-                                                                               \
-    struct DefaultWrap                                                         \
-    {                                                                          \
-      typedef Default tname;                                                   \
-    };                                                                         \
-                                                                               \
-    enum                                                                       \
-    {                                                                          \
-      value = (1 == sizeof(test<Tp>(choose())))                                \
-    };                                                                         \
-                                                                               \
-    typedef typename boost::detail::if_true<value>::BOOST_NESTED_TEMPLATE      \
-      then<Tp, DefaultWrap>::type::tname type;                                 \
-  }
-
-#endif
-
-#define BOOST_UNORDERED_DEFAULT_TYPE(T, tname, arg)                            \
-  typename default_type_##tname<T, arg>::type
-
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Allocator traits
@@ -1115,6 +934,72 @@ namespace boost {
   }
 }
 
+#if defined(BOOST_MSVC) && BOOST_MSVC <= 1400
+
+#define BOOST_UNORDERED_DEFAULT_TYPE_TMPLT(tname)                              \
+  template <typename Tp, typename Default> struct default_type_##tname         \
+  {                                                                            \
+                                                                               \
+    template <typename X>                                                      \
+    static choice1::type test(choice1, typename X::tname* = 0);                \
+                                                                               \
+    template <typename X> static choice2::type test(choice2, void* = 0);       \
+                                                                               \
+    struct DefaultWrap                                                         \
+    {                                                                          \
+      typedef Default tname;                                                   \
+    };                                                                         \
+                                                                               \
+    enum                                                                       \
+    {                                                                          \
+      value = (1 == sizeof(test<Tp>(choose())))                                \
+    };                                                                         \
+                                                                               \
+    typedef typename boost::detail::if_true<value>::BOOST_NESTED_TEMPLATE      \
+      then<Tp, DefaultWrap>::type::tname type;                                 \
+  }
+
+#else
+
+namespace boost {
+  namespace unordered {
+    namespace detail {
+      template <typename T, typename T2> struct sfinae : T2
+      {
+      };
+    }
+  }
+}
+
+#define BOOST_UNORDERED_DEFAULT_TYPE_TMPLT(tname)                              \
+  template <typename Tp, typename Default> struct default_type_##tname         \
+  {                                                                            \
+                                                                               \
+    template <typename X>                                                      \
+    static typename boost::unordered::detail::sfinae<typename X::tname,        \
+      choice1>::type test(choice1);                                            \
+                                                                               \
+    template <typename X> static choice2::type test(choice2);                  \
+                                                                               \
+    struct DefaultWrap                                                         \
+    {                                                                          \
+      typedef Default tname;                                                   \
+    };                                                                         \
+                                                                               \
+    enum                                                                       \
+    {                                                                          \
+      value = (1 == sizeof(test<Tp>(choose())))                                \
+    };                                                                         \
+                                                                               \
+    typedef typename boost::detail::if_true<value>::BOOST_NESTED_TEMPLATE      \
+      then<Tp, DefaultWrap>::type::tname type;                                 \
+  }
+
+#endif
+
+#define BOOST_UNORDERED_DEFAULT_TYPE(T, tname, arg)                            \
+  typename default_type_##tname<T, arg>::type
+
 namespace boost {
   namespace unordered {
     namespace detail {
@@ -1129,7 +1014,6 @@ namespace boost {
       BOOST_UNORDERED_DEFAULT_TYPE_TMPLT(
         propagate_on_container_move_assignment);
       BOOST_UNORDERED_DEFAULT_TYPE_TMPLT(propagate_on_container_swap);
-      BOOST_UNORDERED_DEFAULT_TYPE_TMPLT(is_always_equal);
 
 #if !defined(BOOST_NO_SFINAE_EXPR)
 
@@ -1426,9 +1310,6 @@ namespace boost {
           false_type) propagate_on_container_move_assignment;
         typedef BOOST_UNORDERED_DEFAULT_TYPE(Alloc, propagate_on_container_swap,
           false_type) propagate_on_container_swap;
-
-        typedef BOOST_UNORDERED_DEFAULT_TYPE(Alloc, is_always_equal,
-          typename boost::is_empty<Alloc>::type) is_always_equal;
       };
     }
   }
@@ -1449,20 +1330,9 @@ namespace boost {
   namespace unordered {
     namespace detail {
 
-      BOOST_UNORDERED_DEFAULT_TYPE_TMPLT(is_always_equal);
-
       template <typename Alloc>
       struct allocator_traits : std::allocator_traits<Alloc>
       {
-        // As is_always_equal was introduced in C++17, std::allocator_traits
-        // doesn't always have it. So use it when available, implement it
-        // ourselves when not. Would be simpler not to bother with
-        // std::allocator_traits, but I feel like I should try to use
-        // it where possible.
-        typedef BOOST_UNORDERED_DEFAULT_TYPE(std::allocator_traits<Alloc>,
-          is_always_equal,
-          BOOST_UNORDERED_DEFAULT_TYPE(Alloc, is_always_equal,
-            typename boost::is_empty<Alloc>::type)) is_always_equal;
       };
 
       template <typename Alloc, typename T> struct rebind_wrap
@@ -1974,7 +1844,7 @@ namespace boost {
       template <typename Alloc> node_constructor<Alloc>::~node_constructor()
       {
         if (node_) {
-          boost::unordered::detail::func::destroy(boost::to_address(node_));
+          boost::unordered::detail::func::destroy(pointer<node>::get(node_));
           node_allocator_traits::deallocate(alloc_, node_, 1);
         }
       }
@@ -1983,7 +1853,7 @@ namespace boost {
       {
         BOOST_ASSERT(!node_);
         node_ = node_allocator_traits::allocate(alloc_, 1);
-        new ((void*)boost::to_address(node_)) node();
+        new (pointer<void>::get(node_)) node();
       }
 
       template <typename NodeAlloc> struct node_tmp
@@ -2014,7 +1884,7 @@ namespace boost {
         if (node_) {
           BOOST_UNORDERED_CALL_DESTROY(
             node_allocator_traits, alloc_, node_->value_ptr());
-          boost::unordered::detail::func::destroy(boost::to_address(node_));
+          boost::unordered::detail::func::destroy(pointer<node>::get(node_));
           node_allocator_traits::deallocate(alloc_, node_, 1);
         }
       }
@@ -2218,7 +2088,11 @@ namespace boost {
       //
       // all no throw
 
-      template <typename Node> struct l_iterator
+      template <typename Node>
+      struct l_iterator
+        : public std::iterator<std::forward_iterator_tag,
+            typename Node::value_type, std::ptrdiff_t,
+            typename Node::value_type*, typename Node::value_type&>
       {
 #if !defined(BOOST_NO_MEMBER_TEMPLATE_FRIENDS)
         template <typename Node2>
@@ -2232,12 +2106,7 @@ namespace boost {
         std::size_t bucket_count_;
 
       public:
-        typedef typename Node::value_type element_type;
         typedef typename Node::value_type value_type;
-        typedef value_type* pointer;
-        typedef value_type& reference;
-        typedef std::ptrdiff_t difference_type;
-        typedef std::forward_iterator_tag iterator_category;
 
         l_iterator() BOOST_NOEXCEPT : ptr_() {}
 
@@ -2278,7 +2147,11 @@ namespace boost {
         }
       };
 
-      template <typename Node> struct cl_iterator
+      template <typename Node>
+      struct cl_iterator
+        : public std::iterator<std::forward_iterator_tag,
+            typename Node::value_type, std::ptrdiff_t,
+            typename Node::value_type const*, typename Node::value_type const&>
       {
         friend struct boost::unordered::iterator_detail::l_iterator<Node>;
 
@@ -2289,12 +2162,7 @@ namespace boost {
         std::size_t bucket_count_;
 
       public:
-        typedef typename Node::value_type const element_type;
         typedef typename Node::value_type value_type;
-        typedef value_type const* pointer;
-        typedef value_type const& reference;
-        typedef std::ptrdiff_t difference_type;
-        typedef std::forward_iterator_tag iterator_category;
 
         cl_iterator() BOOST_NOEXCEPT : ptr_() {}
 
@@ -2345,7 +2213,11 @@ namespace boost {
         }
       };
 
-      template <typename Node> struct iterator
+      template <typename Node>
+      struct iterator
+        : public std::iterator<std::forward_iterator_tag,
+            typename Node::value_type, std::ptrdiff_t,
+            typename Node::value_type*, typename Node::value_type&>
       {
 #if !defined(BOOST_NO_MEMBER_TEMPLATE_FRIENDS)
         template <typename>
@@ -2358,12 +2230,7 @@ namespace boost {
         node_pointer node_;
 
       public:
-        typedef typename Node::value_type element_type;
         typedef typename Node::value_type value_type;
-        typedef value_type* pointer;
-        typedef value_type& reference;
-        typedef std::ptrdiff_t difference_type;
-        typedef std::forward_iterator_tag iterator_category;
 
         iterator() BOOST_NOEXCEPT : node_() {}
 
@@ -2400,7 +2267,11 @@ namespace boost {
         }
       };
 
-      template <typename Node> struct c_iterator
+      template <typename Node>
+      struct c_iterator
+        : public std::iterator<std::forward_iterator_tag,
+            typename Node::value_type, std::ptrdiff_t,
+            typename Node::value_type const*, typename Node::value_type const&>
       {
         friend struct boost::unordered::iterator_detail::iterator<Node>;
 
@@ -2414,12 +2285,7 @@ namespace boost {
         node_pointer node_;
 
       public:
-        typedef typename Node::value_type const element_type;
         typedef typename Node::value_type value_type;
-        typedef value_type const* pointer;
-        typedef value_type const& reference;
-        typedef std::ptrdiff_t difference_type;
-        typedef std::forward_iterator_tag iterator_category;
 
         c_iterator() BOOST_NOEXCEPT : node_() {}
 
@@ -2546,7 +2412,7 @@ namespace boost {
 
           BOOST_UNORDERED_CALL_DESTROY(
             node_allocator_traits, constructor_.alloc_, p->value_ptr());
-          boost::unordered::detail::func::destroy(boost::to_address(p));
+          boost::unordered::detail::func::destroy(pointer<node>::get(p));
           node_allocator_traits::deallocate(constructor_.alloc_, p, 1);
         }
       }
@@ -2724,13 +2590,20 @@ namespace boost {
 
       //////////////////////////////////////////////////////////////////////////
       // Functions
-      //
-      // This double buffers the storage for the hash function and key equality
-      // predicate in order to have exception safe copy/swap. To do so,
-      // use 'construct_spare' to construct in the spare space, and then when
-      // ready to use 'switch_functions' to switch to the new functions.
-      // If an exception is thrown between these two calls, use
-      // 'cleanup_spare_functions' to destroy the unused constructed functions.
+
+      // Assigning and swapping the equality and hash function objects
+      // needs strong exception safety. To implement that normally we'd
+      // require one of them to be known to not throw and the other to
+      // guarantee strong exception safety. Unfortunately they both only
+      // have basic exception safety. So to acheive strong exception
+      // safety we have storage space for two copies, and assign the new
+      // copies to the unused space. Then switch to using that to use
+      // them. This is implemented in 'set_hash_functions' which
+      // atomically assigns the new function objects in a strongly
+      // exception safe manner.
+
+      template <class H, class P, bool NoThrowMoveAssign>
+      class set_hash_functions;
 
       template <class H, class P> class functions
       {
@@ -2741,11 +2614,10 @@ namespace boost {
         static const bool nothrow_move_constructible =
           boost::is_nothrow_move_constructible<H>::value &&
           boost::is_nothrow_move_constructible<P>::value;
-        static const bool nothrow_swappable =
-          boost::is_nothrow_swappable<H>::value &&
-          boost::is_nothrow_swappable<P>::value;
 
       private:
+        friend class boost::unordered::detail::set_hash_functions<H, P,
+          nothrow_move_assignable>;
         functions& operator=(functions const&);
 
         typedef compressed<H, P> function_pair;
@@ -2753,101 +2625,134 @@ namespace boost {
         typedef typename boost::aligned_storage<sizeof(function_pair),
           boost::alignment_of<function_pair>::value>::type aligned_function;
 
-        unsigned char current_; // 0/1 - Currently active functions
-                                // +2 - Both constructed
+        bool current_; // The currently active functions.
         aligned_function funcs_[2];
 
-      public:
-        functions(H const& hf, P const& eq) : current_(0)
-        {
-          construct_functions(current_, hf, eq);
-        }
-
-        functions(functions const& bf) : current_(0)
-        {
-          construct_functions(current_, bf.current_functions());
-        }
-
-        functions(functions& bf, boost::unordered::detail::move_tag)
-            : current_(0)
-        {
-          construct_functions(current_, bf.current_functions(),
-            boost::unordered::detail::integral_constant<bool,
-              nothrow_move_constructible>());
-        }
-
-        ~functions()
-        {
-          BOOST_ASSERT(!(current_ & 2));
-          destroy_functions(current_);
-        }
-
-        H const& hash_function() const { return current_functions().first(); }
-
-        P const& key_eq() const { return current_functions().second(); }
-
-        function_pair const& current_functions() const
+        function_pair const& current() const
         {
           return *static_cast<function_pair const*>(
-            static_cast<void const*>(funcs_[current_ & 1].address()));
+            static_cast<void const*>(funcs_[current_].address()));
         }
 
-        function_pair& current_functions()
+        function_pair& current()
         {
           return *static_cast<function_pair*>(
-            static_cast<void*>(funcs_[current_ & 1].address()));
+            static_cast<void*>(funcs_[current_].address()));
         }
 
-        void construct_spare_functions(function_pair const& f)
+        void construct(bool which, H const& hf, P const& eq)
         {
-          BOOST_ASSERT(!(current_ & 2));
-          construct_functions(current_ ^ 1, f);
-          current_ |= 2;
-        }
-
-        void cleanup_spare_functions()
-        {
-          if (current_ & 2) {
-            current_ = static_cast<unsigned char>(current_ & 1);
-            destroy_functions(current_ ^ 1);
-          }
-        }
-
-        void switch_functions()
-        {
-          BOOST_ASSERT(current_ & 2);
-          destroy_functions(static_cast<unsigned char>(current_ & 1));
-          current_ ^= 3;
-        }
-
-      private:
-        void construct_functions(unsigned char which, H const& hf, P const& eq)
-        {
-          BOOST_ASSERT(!(which & 2));
           new ((void*)&funcs_[which]) function_pair(hf, eq);
         }
 
-        void construct_functions(unsigned char which, function_pair const& f,
+        void construct(bool which, function_pair const& f,
           boost::unordered::detail::false_type =
             boost::unordered::detail::false_type())
         {
-          BOOST_ASSERT(!(which & 2));
           new ((void*)&funcs_[which]) function_pair(f);
         }
 
-        void construct_functions(unsigned char which, function_pair& f,
-          boost::unordered::detail::true_type)
+        void construct(
+          bool which, function_pair& f, boost::unordered::detail::true_type)
         {
-          BOOST_ASSERT(!(which & 2));
           new ((void*)&funcs_[which])
             function_pair(f, boost::unordered::detail::move_tag());
         }
 
-        void destroy_functions(unsigned char which)
+        void destroy(bool which)
         {
-          BOOST_ASSERT(!(which & 2));
           boost::unordered::detail::func::destroy(
             (function_pair*)(&funcs_[which]));
+        }
+
+      public:
+        typedef boost::unordered::detail::set_hash_functions<H, P,
+          nothrow_move_assignable>
+          set_hash_functions;
+
+        functions(H const& hf, P const& eq) : current_(false)
+        {
+          construct(current_, hf, eq);
+        }
+
+        functions(functions const& bf) : current_(false)
+        {
+          construct(current_, bf.current());
+        }
+
+        functions(functions& bf, boost::unordered::detail::move_tag)
+            : current_(false)
+        {
+          construct(current_, bf.current(),
+            boost::unordered::detail::integral_constant<bool,
+              nothrow_move_constructible>());
+        }
+
+        ~functions() { this->destroy(current_); }
+
+        H const& hash_function() const { return current().first(); }
+
+        P const& key_eq() const { return current().second(); }
+      };
+
+      template <class H, class P> class set_hash_functions<H, P, false>
+      {
+        set_hash_functions(set_hash_functions const&);
+        set_hash_functions& operator=(set_hash_functions const&);
+
+        typedef functions<H, P> functions_type;
+
+        functions_type& functions_;
+        bool tmp_functions_;
+
+      public:
+        set_hash_functions(functions_type& f, H const& h, P const& p)
+            : functions_(f), tmp_functions_(!f.current_)
+        {
+          f.construct(tmp_functions_, h, p);
+        }
+
+        set_hash_functions(functions_type& f, functions_type const& other)
+            : functions_(f), tmp_functions_(!f.current_)
+        {
+          f.construct(tmp_functions_, other.current());
+        }
+
+        ~set_hash_functions() { functions_.destroy(tmp_functions_); }
+
+        void commit()
+        {
+          functions_.current_ = tmp_functions_;
+          tmp_functions_ = !tmp_functions_;
+        }
+      };
+
+      template <class H, class P> class set_hash_functions<H, P, true>
+      {
+        set_hash_functions(set_hash_functions const&);
+        set_hash_functions& operator=(set_hash_functions const&);
+
+        typedef functions<H, P> functions_type;
+
+        functions_type& functions_;
+        H hash_;
+        P pred_;
+
+      public:
+        set_hash_functions(functions_type& f, H const& h, P const& p)
+            : functions_(f), hash_(h), pred_(p)
+        {
+        }
+
+        set_hash_functions(functions_type& f, functions_type const& other)
+            : functions_(f), hash_(other.hash_function()), pred_(other.key_eq())
+        {
+        }
+
+        void commit()
+        {
+          functions_.current().first() = boost::move(hash_);
+          functions_.current().second() = boost::move(pred_);
         }
       };
 
@@ -2896,6 +2801,31 @@ namespace boost {
                  : static_cast<std::size_t>(f);
       }
 
+      // The space used to store values in a node.
+
+      template <typename ValueType> struct value_base
+      {
+        typedef ValueType value_type;
+
+        typename boost::aligned_storage<sizeof(value_type),
+          boost::alignment_of<value_type>::value>::type data_;
+
+        value_base() : data_() {}
+
+        void* address() { return this; }
+
+        value_type& value() { return *(ValueType*)this; }
+
+        value_type const& value() const { return *(ValueType const*)this; }
+
+        value_type* value_ptr() { return (ValueType*)this; }
+
+        value_type const* value_ptr() const { return (ValueType const*)this; }
+
+      private:
+        value_base& operator=(value_base const&);
+      };
+
       template <typename Types>
       struct table : boost::unordered::detail::functions<typename Types::hasher,
                        typename Types::key_equal>
@@ -2923,6 +2853,7 @@ namespace boost {
         typedef boost::unordered::detail::functions<typename Types::hasher,
           typename Types::key_equal>
           functions;
+        typedef typename functions::set_hash_functions set_hash_functions;
 
         typedef typename Types::value_allocator value_allocator;
         typedef typename boost::unordered::detail::rebind_wrap<value_allocator,
@@ -3020,7 +2951,7 @@ namespace boost {
             bucket_allocator_traits::max_size(bucket_alloc()) - 1);
         }
 
-        bucket_pointer get_bucket_pointer(std::size_t bucket_index) const
+        bucket_pointer get_bucket(std::size_t bucket_index) const
         {
           BOOST_ASSERT(buckets_);
           return buckets_ + static_cast<std::ptrdiff_t>(bucket_index);
@@ -3028,12 +2959,12 @@ namespace boost {
 
         link_pointer get_previous_start() const
         {
-          return get_bucket_pointer(bucket_count_)->first_from_start();
+          return get_bucket(bucket_count_)->first_from_start();
         }
 
         link_pointer get_previous_start(std::size_t bucket_index) const
         {
-          return get_bucket_pointer(bucket_index)->next_;
+          return get_bucket(bucket_index)->next_;
         }
 
         node_pointer begin() const
@@ -3162,7 +3093,7 @@ namespace boost {
         // Clear the bucket pointers.
         void clear_buckets()
         {
-          bucket_pointer end = get_bucket_pointer(bucket_count_);
+          bucket_pointer end = get_bucket(bucket_count_);
           for (bucket_pointer it = buckets_; it != end; ++it) {
             it->next_ = node_pointer();
           }
@@ -3206,9 +3137,9 @@ namespace boost {
           bucket_pointer end =
             buckets_ + static_cast<std::ptrdiff_t>(new_count);
           for (bucket_pointer i = buckets_; i != end; ++i) {
-            new ((void*)boost::to_address(i)) bucket();
+            new (pointer<void>::get(i)) bucket();
           }
-          new ((void*)boost::to_address(end)) bucket(dummy_node);
+          new (pointer<void>::get(end)) bucket(dummy_node);
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -3229,62 +3160,26 @@ namespace boost {
           allocators_.swap(other.allocators_);
         }
 
-        // Not nothrow swappable
-        void swap(table& x, false_type)
-        {
-          if (this == &x) {
-            return;
-          }
-
-          this->construct_spare_functions(x.current_functions());
-          BOOST_TRY { x.construct_spare_functions(this->current_functions()); }
-          BOOST_CATCH(...)
-          {
-            this->cleanup_spare_functions();
-            BOOST_RETHROW
-          }
-          BOOST_CATCH_END
-          this->switch_functions();
-          x.switch_functions();
-
-          swap_allocators(
-            x, boost::unordered::detail::integral_constant<bool,
-                 allocator_traits<
-                   node_allocator>::propagate_on_container_swap::value>());
-
-          boost::swap(buckets_, x.buckets_);
-          boost::swap(bucket_count_, x.bucket_count_);
-          boost::swap(size_, x.size_);
-          std::swap(mlf_, x.mlf_);
-          std::swap(max_load_, x.max_load_);
-        }
-
-        // Nothrow swappable
-        void swap(table& x, true_type)
-        {
-          swap_allocators(
-            x, boost::unordered::detail::integral_constant<bool,
-                 allocator_traits<
-                   node_allocator>::propagate_on_container_swap::value>());
-
-          boost::swap(buckets_, x.buckets_);
-          boost::swap(bucket_count_, x.bucket_count_);
-          boost::swap(size_, x.size_);
-          std::swap(mlf_, x.mlf_);
-          std::swap(max_load_, x.max_load_);
-          this->current_functions().swap(x.current_functions());
-        }
-
-        // Only swaps the allocators if propagate_on_container_swap.
-        // If not propagate_on_container_swap and allocators aren't
-        // equal, behaviour is undefined.
+        // Only swaps the allocators if propagate_on_container_swap
         void swap(table& x)
         {
-          BOOST_ASSERT(allocator_traits<
-                         node_allocator>::propagate_on_container_swap::value ||
-                       node_alloc() == x.node_alloc());
-          swap(x, boost::unordered::detail::integral_constant<bool,
-                    functions::nothrow_swappable>());
+          set_hash_functions op1(*this, x);
+          set_hash_functions op2(x, *this);
+
+          // I think swap can throw if Propagate::value,
+          // since the allocators' swap can throw. Not sure though.
+          swap_allocators(
+            x, boost::unordered::detail::integral_constant<bool,
+                 allocator_traits<
+                   node_allocator>::propagate_on_container_swap::value>());
+
+          boost::swap(buckets_, x.buckets_);
+          boost::swap(bucket_count_, x.bucket_count_);
+          boost::swap(size_, x.size_);
+          std::swap(mlf_, x.mlf_);
+          std::swap(max_load_, x.max_load_);
+          op1.commit();
+          op2.commit();
         }
 
         // Only call with nodes allocated with the currect allocator, or
@@ -3312,9 +3207,9 @@ namespace boost {
             link_pointer prev = this->get_previous_start();
             std::size_t last_bucket = this->bucket_count_;
             for (node_pointer n = src.begin(); n; n = next_node(n)) {
-              std::size_t n_bucket = n->get_bucket();
-              if (n_bucket != last_bucket) {
-                this->get_bucket_pointer(n_bucket)->next_ = prev;
+              std::size_t bucket = n->get_bucket();
+              if (bucket != last_bucket) {
+                this->get_bucket(bucket)->next_ = prev;
               }
               node_pointer n2 = boost::unordered::detail::func::construct_node(
                 this->node_alloc(), boost::move(n->value()));
@@ -3322,7 +3217,7 @@ namespace boost {
               prev->next_ = n2;
               ++size_;
               prev = n2;
-              last_bucket = n_bucket;
+              last_bucket = bucket;
             }
           }
         }
@@ -3336,19 +3231,19 @@ namespace boost {
         {
           BOOST_UNORDERED_CALL_DESTROY(
             node_allocator_traits, node_alloc(), n->value_ptr());
-          boost::unordered::detail::func::destroy(boost::to_address(n));
+          boost::unordered::detail::func::destroy(pointer<node>::get(n));
           node_allocator_traits::deallocate(node_alloc(), n, 1);
         }
 
         void delete_buckets()
         {
           if (buckets_) {
-            node_pointer n = static_cast<node_pointer>(
-              get_bucket_pointer(bucket_count_)->next_);
+            node_pointer n =
+              static_cast<node_pointer>(get_bucket(bucket_count_)->next_);
 
             if (bucket::extra_node) {
               node_pointer next = next_node(n);
-              boost::unordered::detail::func::destroy(boost::to_address(n));
+              boost::unordered::detail::func::destroy(pointer<node>::get(n));
               node_allocator_traits::deallocate(node_alloc(), n, 1);
               n = next;
             }
@@ -3368,9 +3263,9 @@ namespace boost {
 
         void destroy_buckets()
         {
-          bucket_pointer end = get_bucket_pointer(bucket_count_ + 1);
+          bucket_pointer end = get_bucket(bucket_count_ + 1);
           for (bucket_pointer it = buckets_; it != end; ++it) {
-            boost::unordered::detail::func::destroy(boost::to_address(it));
+            boost::unordered::detail::func::destroy(pointer<bucket>::get(it));
           }
 
           bucket_allocator_traits::deallocate(
@@ -3398,11 +3293,11 @@ namespace boost {
             }
 
             // Update the bucket containing next.
-            get_bucket_pointer(bucket_index2)->next_ = prev;
+            get_bucket(bucket_index2)->next_ = prev;
           }
 
           // Check if this bucket is now empty.
-          bucket_pointer this_bucket = get_bucket_pointer(bucket_index);
+          bucket_pointer this_bucket = get_bucket(bucket_index);
           if (this_bucket->next_ == prev) {
             this_bucket->next_ = link_pointer();
           }
@@ -3433,25 +3328,18 @@ namespace boost {
         void assign(table const& x, UniqueType is_unique, false_type)
         {
           // Strong exception safety.
-          this->construct_spare_functions(x.current_functions());
-          BOOST_TRY
-          {
-            mlf_ = x.mlf_;
-            recalculate_max_load();
+          set_hash_functions new_func_this(*this, x);
+          mlf_ = x.mlf_;
+          recalculate_max_load();
 
-            if (x.size_ > max_load_) {
-              create_buckets(min_buckets_for_size(x.size_));
-            } else if (size_) {
-              clear_buckets();
-            }
+          if (x.size_ > max_load_) {
+            create_buckets(min_buckets_for_size(x.size_));
+          } else if (size_) {
+            clear_buckets();
           }
-          BOOST_CATCH(...)
-          {
-            this->cleanup_spare_functions();
-            BOOST_RETHROW
-          }
-          BOOST_CATCH_END
-          this->switch_functions();
+
+          new_func_this.commit();
+
           assign_buckets(x, is_unique);
         }
 
@@ -3462,8 +3350,7 @@ namespace boost {
             allocators_.assign(x.allocators_);
             assign(x, is_unique, false_type());
           } else {
-            this->construct_spare_functions(x.current_functions());
-            this->switch_functions();
+            set_hash_functions new_func_this(*this, x);
 
             // Delete everything with current allocators before assigning
             // the new ones.
@@ -3471,6 +3358,7 @@ namespace boost {
             allocators_.assign(x.allocators_);
 
             // Copy over other data, all no throw.
+            new_func_this.commit();
             mlf_ = x.mlf_;
             bucket_count_ = min_buckets_for_size(x.size_);
 
@@ -3492,52 +3380,30 @@ namespace boost {
           }
         }
 
-        // Propagate allocator
         template <typename UniqueType>
         void move_assign(table& x, UniqueType, true_type)
         {
-          if (!functions::nothrow_move_assignable) {
-            this->construct_spare_functions(x.current_functions());
-            this->switch_functions();
-          } else {
-            this->current_functions().move_assign(x.current_functions());
-          }
           delete_buckets();
+          set_hash_functions new_func_this(*this, x);
           allocators_.move_assign(x.allocators_);
+          // No throw from here.
           mlf_ = x.mlf_;
           move_buckets_from(x);
+          new_func_this.commit();
         }
 
-        // Don't propagate allocator
         template <typename UniqueType>
         void move_assign(table& x, UniqueType is_unique, false_type)
         {
           if (node_alloc() == x.node_alloc()) {
-            move_assign_equal_alloc(x);
+            delete_buckets();
+            set_hash_functions new_func_this(*this, x);
+            // No throw from here.
+            mlf_ = x.mlf_;
+            move_buckets_from(x);
+            new_func_this.commit();
           } else {
-            move_assign_realloc(x, is_unique);
-          }
-        }
-
-        void move_assign_equal_alloc(table& x)
-        {
-          if (!functions::nothrow_move_assignable) {
-            this->construct_spare_functions(x.current_functions());
-            this->switch_functions();
-          } else {
-            this->current_functions().move_assign(x.current_functions());
-          }
-          delete_buckets();
-          mlf_ = x.mlf_;
-          move_buckets_from(x);
-        }
-
-        template <typename UniqueType>
-        void move_assign_realloc(table& x, UniqueType is_unique)
-        {
-          this->construct_spare_functions(x.current_functions());
-          BOOST_TRY
-          {
+            set_hash_functions new_func_this(*this, x);
             mlf_ = x.mlf_;
             recalculate_max_load();
 
@@ -3546,15 +3412,11 @@ namespace boost {
             } else if (size_) {
               clear_buckets();
             }
+
+            new_func_this.commit();
+
+            move_assign_buckets(x, is_unique);
           }
-          BOOST_CATCH(...)
-          {
-            this->cleanup_spare_functions();
-            BOOST_RETHROW
-          }
-          BOOST_CATCH_END
-          this->switch_functions();
-          move_assign_buckets(x, is_unique);
         }
 
         // Accessors
@@ -3685,7 +3547,7 @@ namespace boost {
           node_pointer n, std::size_t key_hash)
         {
           std::size_t bucket_index = this->hash_to_bucket(key_hash);
-          bucket_pointer b = this->get_bucket_pointer(bucket_index);
+          bucket_pointer b = this->get_bucket(bucket_index);
 
           n->bucket_info_ = bucket_index;
           n->set_first_in_group();
@@ -3694,8 +3556,7 @@ namespace boost {
             link_pointer start_node = this->get_previous_start();
 
             if (start_node->next_) {
-              this->get_bucket_pointer(node_bucket(next_node(start_node)))
-                ->next_ = n;
+              this->get_bucket(node_bucket(next_node(start_node)))->next_ = n;
             }
 
             b->next_ = start_node;
@@ -4207,19 +4068,18 @@ namespace boost {
             if (n->next_) {
               std::size_t next_bucket = this->node_bucket(next_node(n));
               if (next_bucket != bucket_index) {
-                this->get_bucket_pointer(next_bucket)->next_ = n;
+                this->get_bucket(next_bucket)->next_ = n;
               }
             }
           } else {
             n->set_first_in_group();
-            bucket_pointer b = this->get_bucket_pointer(bucket_index);
+            bucket_pointer b = this->get_bucket(bucket_index);
 
             if (!b->next_) {
               link_pointer start_node = this->get_previous_start();
 
               if (start_node->next_) {
-                this
-                  ->get_bucket_pointer(this->node_bucket(next_node(start_node)))
+                this->get_bucket(this->node_bucket(next_node(start_node)))
                   ->next_ = n;
               }
 
@@ -4245,7 +4105,7 @@ namespace boost {
           if (n->next_) {
             std::size_t next_bucket = this->node_bucket(next_node(n));
             if (next_bucket != this->node_bucket(n)) {
-              this->get_bucket_pointer(next_bucket)->next_ = n;
+              this->get_bucket(next_bucket)->next_ = n;
             }
           }
           ++this->size_;
@@ -4514,7 +4374,7 @@ namespace boost {
       template <typename Types> inline void table<Types>::clear_impl()
       {
         if (size_) {
-          bucket_pointer end = get_bucket_pointer(bucket_count_);
+          bucket_pointer end = get_bucket(bucket_count_);
           for (bucket_pointer it = buckets_; it != end; ++it) {
             it->next_ = node_pointer();
           }
@@ -4602,7 +4462,7 @@ namespace boost {
             }
 
             // n is now the last node in the group
-            bucket_pointer b = this->get_bucket_pointer(bucket_index);
+            bucket_pointer b = this->get_bucket(bucket_index);
             if (!b->next_) {
               b->next_ = prev;
               prev = n;

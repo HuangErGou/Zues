@@ -31,12 +31,15 @@ namespace detail {
 template<class... TN>
 class variant
 {
-    detail::aligned_union_t<1, TN...> buf_;
+    typename std::aligned_storage<
+        max_sizeof<TN...>(),
+        max_alignof<TN...>()
+    >::type buf_;
     unsigned char i_ = 0;
 
     template<std::size_t I>
     using type = typename std::tuple_element<
-        I, std::tuple<TN...>>::type;
+        I , std::tuple<TN...>>::type;
 
     template<std::size_t I>
     using C = std::integral_constant<std::size_t, I>;
@@ -46,15 +49,8 @@ public:
 
     ~variant()
     {
-        destroy(C<0>{});
-    }
-
-    bool
-    operator==(variant const& other) const
-    {
-        if(i_ != other.i_)
-            return false;
-        return equal(other, C<0>{});
+        if(i_)
+            destroy(C<0>{});
     }
 
     // 0 = empty
@@ -68,7 +64,6 @@ public:
     variant(variant&& other)
     {
         i_ = other.move(&buf_, C<0>{});
-        other.i_ = 0;
     }
 
     variant(variant const& other)
@@ -79,22 +74,17 @@ public:
     // moved-from object becomes empty
     variant& operator=(variant&& other)
     {
-        if(this != &other)
-        {
+        if(i_ != 0)
             destroy(C<0>{});
-            i_ = other.move(&buf_, C<0>{});
-            other.i_ = 0;
-        }
+        i_ = other.move(&buf_, C<0>{});
         return *this;
     }
 
     variant& operator=(variant const& other)
     {
-        if(this != &other)
-        {
+        if(i_ != 0)
             destroy(C<0>{});
-            i_ = other.copy(&buf_, C<0>{});
-        }
+        i_ = other.copy(&buf_, C<0>{});
         return *this;
     }
 
@@ -102,7 +92,8 @@ public:
     void
     emplace(Args&&... args)
     {
-        destroy(C<0>{});
+        if(i_ != 0)
+            destroy(C<0>{});
         new(&buf_) type<I-1>(
             std::forward<Args>(args)...);
         i_ = I;
@@ -129,134 +120,71 @@ public:
     void
     reset()
     {
+        if(i_ == 0)
+            return;
         destroy(C<0>{});
     }
 
 private:
     void
-    destroy(C<0>)
+    destroy(C<sizeof...(TN)>)
     {
-        auto const I = 0;
-        if(i_ == I)
-            return;
-        destroy(C<I+1>{});
-        i_ = 0;
+        return;
     }
 
     template<std::size_t I>
     void
     destroy(C<I>)
     {
-        if(i_ == I)
+        if(i_ == I+1)
         {
-            using T = type<I-1>;
-            get<I>().~T();
+            using T = type<I>;
+            get<I+1>().~T();
+            i_ = 0;
             return;
         }
         destroy(C<I+1>{});
     }
 
-    void
-    destroy(C<sizeof...(TN)>)
-    {
-        auto const I = sizeof...(TN);
-        BOOST_ASSERT(i_ == I);
-        using T = type<I-1>;
-        get<I>().~T();
-    }
-
     unsigned char
-    move(void* dest, C<0>)
+    move(void*, C<sizeof...(TN)>)
     {
-        auto const I = 0;
-        if(i_ == I)
-            return I;
-        return move(dest, C<I+1>{});
+        return 0;
     }
 
     template<std::size_t I>
     unsigned char
     move(void* dest, C<I>)
     {
-        if(i_ == I)
+        if(i_ == I+1)
         {
-            using T = type<I-1>;
-            new(dest) T(std::move(get<I>()));
-            get<I>().~T();
-            return I;
+            using T = type<I>;
+            new(dest) T{std::move(get<I+1>())};
+            get<I+1>().~T();
+            i_ = 0;
+            return I+1;
         }
         return move(dest, C<I+1>{});
     }
 
     unsigned char
-    move(void* dest, C<sizeof...(TN)>)
+    copy(void*, C<sizeof...(TN)>) const
     {
-        auto const I = sizeof...(TN);
-        BOOST_ASSERT(i_ == I);
-        using T = type<I-1>;
-        new(dest) T(std::move(get<I>()));
-        get<I>().~T();
-        return I;
-    }
-
-    unsigned char
-    copy(void* dest, C<0>) const
-    {
-        auto const I = 0;
-        if(i_ == I)
-            return I;
-        return copy(dest, C<I+1>{});
+        return 0;
     }
 
     template<std::size_t I>
     unsigned char
     copy(void* dest, C<I>) const
     {
-        if(i_ == I)
+        if(i_ == I+1)
         {
-            using T = type<I-1>;
-            auto const& t = get<I>();
-            new(dest) T(t);
-            return I;
+            using T = type<I>;
+            auto const& t = get<I+1>();
+            new(dest) T{t};
+            return I+1;
         }
         return copy(dest, C<I+1>{});
-    }
-
-    unsigned char
-    copy(void* dest, C<sizeof...(TN)>) const
-    {
-        auto const I = sizeof...(TN);
-        BOOST_ASSERT(i_ == I);
-        using T = type<I-1>;
-        auto const& t = get<I>();
-        new(dest) T(t);
-        return I;
-    }
-
-    bool
-    equal(variant const& other, C<0>) const
-    {
-        auto constexpr I = 0;
-        if(i_ == I)
-            return true;
-        return equal(other, C<I+1>{});
-    }
-
-    template<std::size_t I>
-    bool
-    equal(variant const& other, C<I>) const
-    {
-        if(i_ == I)
-            return get<I>() == other.get<I>();
-        return equal(other, C<I+1>{});
-    }
-
-    bool
-    equal(variant const& other, C<sizeof...(TN)>) const
-    {
-        auto constexpr I = sizeof...(TN);
-        BOOST_ASSERT(i_ == I);
-        return get<I>() == other.get<I>();
     }
 };
 

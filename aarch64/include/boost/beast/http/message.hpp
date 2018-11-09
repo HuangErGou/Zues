@@ -862,8 +862,7 @@ struct message
 #endif
     body()& noexcept
     {
-        return this->beast::detail::empty_base_optimization<
-            typename Body::value_type>::member();
+        return this->member();
     }
 
     /// Returns the body
@@ -874,9 +873,7 @@ struct message
 #endif
     body()&& noexcept
     {
-        return std::move(
-            this->beast::detail::empty_base_optimization<
-                typename Body::value_type>::member());
+        return std::move(this->member());
     }
 
     /// Returns the body
@@ -887,8 +884,7 @@ struct message
 #endif
     body() const& noexcept
     {
-        return this->beast::detail::empty_base_optimization<
-            typename Body::value_type>::member();
+        return this->member();
     }
 
 private:

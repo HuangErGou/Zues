@@ -64,18 +64,17 @@ namespace detail {
 
 struct gcc_alpha_operations_base
 {
-    static BOOST_CONSTEXPR_OR_CONST bool full_cas_based = false;
     static BOOST_CONSTEXPR_OR_CONST bool is_always_lock_free = true;
 
     static BOOST_FORCEINLINE void fence_before(memory_order order) BOOST_NOEXCEPT
     {
-        if ((static_cast< unsigned int >(order) & static_cast< unsigned int >(memory_order_release)) != 0u)
+        if ((order & memory_order_release) != 0)
             __asm__ __volatile__ ("mb" ::: "memory");
     }
 
     static BOOST_FORCEINLINE void fence_after(memory_order order) BOOST_NOEXCEPT
     {
-        if ((static_cast< unsigned int >(order) & (static_cast< unsigned int >(memory_order_consume) | static_cast< unsigned int >(memory_order_acquire))) != 0u)
+        if ((order & (memory_order_consume | memory_order_acquire)) != 0)
             __asm__ __volatile__ ("mb" ::: "memory");
     }
 
@@ -91,8 +90,8 @@ template< bool Signed >
 struct operations< 4u, Signed > :
     public gcc_alpha_operations_base
 {
-    typedef typename make_storage_type< 4u >::type storage_type;
-    typedef typename make_storage_type< 4u >::aligned aligned_storage_type;
+    typedef typename make_storage_type< 4u, Signed >::type storage_type;
+    typedef typename make_storage_type< 4u, Signed >::aligned aligned_storage_type;
 
     static BOOST_CONSTEXPR_OR_CONST std::size_t storage_size = 4u;
     static BOOST_CONSTEXPR_OR_CONST bool is_signed = Signed;
@@ -601,8 +600,8 @@ template< bool Signed >
 struct operations< 8u, Signed > :
     public gcc_alpha_operations_base
 {
-    typedef typename make_storage_type< 8u >::type storage_type;
-    typedef typename make_storage_type< 8u >::aligned aligned_storage_type;
+    typedef typename make_storage_type< 8u, Signed >::type storage_type;
+    typedef typename make_storage_type< 8u, Signed >::aligned aligned_storage_type;
 
     static BOOST_CONSTEXPR_OR_CONST std::size_t storage_size = 8u;
     static BOOST_CONSTEXPR_OR_CONST bool is_signed = Signed;

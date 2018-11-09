@@ -11,8 +11,6 @@
 //
 //////////////////////////////////////////////////////////////////////////////
 
-#include <boost/bind.hpp>
-
 #include <boost/thread/detail/config.hpp>
 #include <boost/thread/condition_variable.hpp>
 #include <boost/thread/detail/move.hpp>
@@ -86,13 +84,10 @@ namespace detail
     inline void throw_if_closed(unique_lock<mutex>&);
     inline void throw_if_closed(lock_guard<mutex>&);
 
-    inline bool not_empty_or_closed(unique_lock<mutex>& ) const;
-
+    inline void wait_until_not_empty(unique_lock<mutex>& lk);
     inline bool wait_until_not_empty_or_closed(unique_lock<mutex>& lk);
     template <class WClock, class Duration>
-    queue_op_status wait_until_not_empty_or_closed_until(unique_lock<mutex>& lk, chrono::time_point<WClock,Duration> const&tp);
-    template <class WClock, class Duration>
-    queue_op_status wait_until_closed_until(unique_lock<mutex>& lk, chrono::time_point<WClock,Duration> const&tp);
+    queue_op_status wait_until_not_empty_until(unique_lock<mutex>& lk, chrono::time_point<WClock,Duration> const&);
 
     inline void notify_not_empty_if_needed(unique_lock<mutex>& )
     {
@@ -181,38 +176,39 @@ namespace detail
   }
 
   template <class ValueType, class Queue>
-  bool sync_queue_base<ValueType, Queue>::not_empty_or_closed(unique_lock<mutex>& ) const
+  void sync_queue_base<ValueType, Queue>::wait_until_not_empty(unique_lock<mutex>& lk)
   {
-    return ! data_.empty() || closed_;
+    for (;;)
+    {
+      if (! empty(lk)) break;
+      throw_if_closed(lk);
+      not_empty_.wait(lk);
+    }
   }
-
   template <class ValueType, class Queue>
   bool sync_queue_base<ValueType, Queue>::wait_until_not_empty_or_closed(unique_lock<mutex>& lk)
   {
-    not_empty_.wait(lk, boost::bind(&sync_queue_base<ValueType, Queue>::not_empty_or_closed, boost::ref(*this), boost::ref(lk)));
-    if (! empty(lk)) return false; // success
-    return true; // closed
+    for (;;)
+    {
+      if (! empty(lk)) break;
+      if (closed(lk)) return true;
+      not_empty_.wait(lk);
+    }
+     return false;
   }
 
   template <class ValueType, class Queue>
   template <class WClock, class Duration>
-  queue_op_status sync_queue_base<ValueType, Queue>::wait_until_not_empty_or_closed_until(unique_lock<mutex>& lk, chrono::time_point<WClock,Duration> const&tp)
+  queue_op_status sync_queue_base<ValueType, Queue>::wait_until_not_empty_until(unique_lock<mutex>& lk, chrono::time_point<WClock,Duration> const&tp)
   {
-    if (! not_empty_.wait_until(lk, tp, boost::bind(&sync_queue_base<ValueType, Queue>::not_empty_or_closed, boost::ref(*this), boost::ref(lk))))
-      return queue_op_status::timeout;
-    if (! empty(lk)) return queue_op_status::success;
-    return queue_op_status::closed;
+    for (;;)
+    {
+      if (! empty(lk)) return queue_op_status::success;
+      throw_if_closed(lk);
+      if (not_empty_.wait_until(lk, tp) == cv_status::timeout ) return queue_op_status::timeout;
+    }
   }
 
-  template <class ValueType, class Queue>
-  template <class WClock, class Duration>
-  queue_op_status sync_queue_base<ValueType, Queue>::wait_until_closed_until(unique_lock<mutex>& lk, chrono::time_point<WClock,Duration> const&tp)
-  {
-    bool (sync_queue_base<ValueType, Queue>::*closed_function_ptr)(unique_lock<mutex>&) const = &sync_queue_base<ValueType, Queue>::closed;
-    if (! not_empty_.wait_until(lk, tp, boost::bind(closed_function_ptr, boost::ref(*this), boost::ref(lk))))
-      return queue_op_status::timeout;
-    return queue_op_status::closed;
-  }
 
 } // detail
 } // concurrent

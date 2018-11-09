@@ -973,7 +973,7 @@ struct aligned_struct;
 template<std::size_t Len>\
 struct BOOST_ALIGNMENT(A) aligned_struct<Len, A>\
 {\
-   char data[Len];\
+   char dummy[Len];\
 };\
 //
 
@@ -997,10 +997,9 @@ BOOST_MOVE_ALIGNED_STORAGE_WITH_BOOST_ALIGNMENT(0x1000)
 // Workaround for bogus [-Wignored-attributes] warning on GCC 6.x/7.x: don't use a type that "directly" carries the alignment attribute.
 // See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=82270
 template<std::size_t Len, std::size_t Align>
-union aligned_struct_wrapper
+struct aligned_struct_wrapper
 {
-   aligned_struct<Len, Align> aligner;
-   char data[sizeof(aligned_struct<Len, Align>)];
+   aligned_struct<Len, Align> dummy;
 };
 
 template<std::size_t Len, std::size_t Align>
@@ -1015,7 +1014,7 @@ template<class T, std::size_t Len>
 union aligned_union
 {   
    T aligner;
-   char data[Len];
+   char dummy[Len];
 };
 
 template<std::size_t Len, std::size_t Align, class T, bool Ok>

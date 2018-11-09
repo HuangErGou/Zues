@@ -23,12 +23,17 @@ namespace date_time {
   public:
     typedef typename date_type::duration_type duration_type;
     day_functor(int f) : f_(f) {}
-    duration_type get_offset(const date_type&) const
+    duration_type get_offset(const date_type& d) const
     {
+      // why is 'd' a parameter???
+      // fix compiler warnings
+      d.year();
       return duration_type(f_);
     }
-    duration_type get_neg_offset(const date_type&) const
+    duration_type get_neg_offset(const date_type& d) const
     {
+      // fix compiler warnings
+      d.year();
       return duration_type(-f_);
     }
   private:
@@ -124,13 +129,18 @@ namespace date_time {
     typedef typename date_type::duration_type duration_type;
     typedef typename date_type::calendar_type calendar_type;
     week_functor(int f) : f_(f) {}
-    duration_type get_offset(const date_type&) const
+    duration_type get_offset(const date_type& d) const
     {
-      return duration_type(f_*static_cast<int>(calendar_type::days_in_week()));
+      // why is 'd' a parameter???
+      // fix compiler warnings
+      d.year();
+      return duration_type(f_*calendar_type::days_in_week());
     }
-    duration_type get_neg_offset(const date_type&) const
+    duration_type get_neg_offset(const date_type& d) const
     {
-      return duration_type(-f_*static_cast<int>(calendar_type::days_in_week()));
+      // fix compiler warnings
+      d.year();
+      return duration_type(-f_*calendar_type::days_in_week());
     }
   private:
     int f_;
