@@ -14,10 +14,10 @@ library_names=''
 old_library='libcurl.a'
 
 # Linker flags that cannot go in dependency_libs.
-inherited_linker_flags=' -pthread'
+inherited_linker_flags=''
 
 # Libraries that this one depends upon.
-dependency_libs=' -L/home/huangqin/project/Zues/x86/lib -lrtmp -lssl -lldap -llber -lz -lcrypto -ldl'
+dependency_libs=' -L/home/huangqin/project/Zues/x86/lib -lssl -lcrypto -ldl'
 
 # Names of additional weak libraries provided by this library
 weak_library_names=''
