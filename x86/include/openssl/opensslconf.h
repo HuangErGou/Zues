@@ -30,9 +30,6 @@ extern "C" {
 #ifndef OPENSSL_NO_RC5
 # define OPENSSL_NO_RC5
 #endif
-#ifndef OPENSSL_THREADS
-# define OPENSSL_THREADS
-#endif
 #ifndef OPENSSL_RAND_SEED_OS
 # define OPENSSL_RAND_SEED_OS
 #endif
