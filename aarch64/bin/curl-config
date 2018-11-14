@@ -21,7 +21,7 @@
 #
 ###########################################################################
 
-prefix=/home/huangqin/tmp/curl/aarch64
+prefix=/home/huangqin/project/Zues/aarch64
 exec_prefix=${prefix}
 includedir=${prefix}/include
 cppflag_curl_staticlib=-DCURL_STATICLIB
@@ -84,13 +84,13 @@ while test $# -gt 0; do
         ;;
 
     --feature|--features)
-        for feature in SSL IPv6 UnixSockets AsynchDNS NTLM NTLM_WB TLS-SRP HTTPS-proxy ""; do
+        for feature in SSL IPv6 UnixSockets NTLM NTLM_WB TLS-SRP HTTPS-proxy ""; do
             test -n "$feature" && echo "$feature"
         done
         ;;
 
     --protocols)
-        for protocol in DICT FILE FTP FTPS GOPHER HTTP HTTPS IMAP IMAPS POP3 POP3S RTSP SMB SMBS SMTP SMTPS TELNET TFTP; do
+        for protocol in DICT FILE FTP FTPS GOPHER HTTP HTTPS IMAP IMAPS POP3 POP3S SMB SMBS SMTP SMTPS TELNET TFTP; do
             echo "$protocol"
         done
         ;;
@@ -161,7 +161,7 @@ while test $# -gt 0; do
            CURLLIBDIR=""
         fi
         if test "Xyes" = "Xyes"; then
-          echo ${CURLLIBDIR}-lcurl -lssl -lcrypto -ldl -lpthread
+          echo ${CURLLIBDIR}-lcurl -lssl -lcrypto -ldl
         else
           echo ${CURLLIBDIR}-lcurl
         fi
@@ -172,7 +172,7 @@ while test $# -gt 0; do
 
     --static-libs)
         if test "Xyes" != "Xno" ; then
-          echo ${exec_prefix}/lib/libcurl.a -L/home/huangqin/project/Zues/aarch64/lib -lssl -lcrypto -ldl -lpthread
+          echo ${exec_prefix}/lib/libcurl.a -L/home/huangqin/project/Zues/aarch64/lib -lssl -lcrypto -ldl
         else
           echo "curl was built with static libraries disabled" >&2
           exit 1
@@ -180,7 +180,7 @@ while test $# -gt 0; do
         ;;
 
     --configure)
-        echo " 'CC=/opt/gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-gcc' 'CXX=/opt/gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-g++' '--prefix=/home/huangqin/tmp/curl/aarch64' '--enable-shared=no' '--enable-static=yes' '--host=aarch64' '--with-ssl=/home/huangqin/project/Zues/aarch64' 'host_alias=aarch64'"
+        echo " 'CC=/opt/gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-gcc' 'CXX=/opt/gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-g++' '--prefix=/home/huangqin/project/Zues/aarch64' '--enable-shared=no' '--enable-static=yes' '--host=aarch64' '--with-ssl=/home/huangqin/project/Zues/aarch64' '--without-zlib' '--without-librtmp' '--disable-ldap' '--disable-ldaps' '--disable-rtsp' '--disable-pthreads' '--disable-threaded-resolver' 'host_alias=aarch64'"
         ;;
 
     *)
